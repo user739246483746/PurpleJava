@@ -35,6 +35,12 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Download JRE ARM64
+        run: |
+          mkdir -p app/src/main/assets
+          wget -q https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre17-1/jre17-arm64.tar.gz \
+            -O app/src/main/assets/jre.tar.gz
+
       - name: Download Gradle Wrapper JAR
         run: |
           mkdir -p gradle/wrapper
