@@ -38,8 +38,12 @@ jobs:
       - name: Download JRE ARM64
         run: |
           mkdir -p app/src/main/assets
-          wget -q https://github.com/PojavLauncherTeam/android-openjdk-build-multiarch/releases/download/jre17-1/jre17-arm64.tar.gz \
-            -O app/src/main/assets/jre.tar.gz
+          gh release download --repo adoptium/temurin17-binaries \
+            --pattern "OpenJDK17U-jre_aarch64_linux_hotspot_*.tar.gz" \
+            --output app/src/main/assets/jre.tar.gz \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Gradle Wrapper JAR
         run: |
