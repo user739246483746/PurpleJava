@@ -3,9 +3,14 @@ package com.purplejava;
 import android.content.Context;
 import android.util.Log;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 public class GameLauncher {
 
@@ -32,9 +37,24 @@ public class GameLauncher {
             assetsDir.mkdirs();
             nativesDir.mkdirs();
 
+            // Extrai JRE do assets se ainda não extraído
+            File jreDir = new File(ctx.getFilesDir(), "jre");
+            if (!jreDir.exists()) {
+                log.onLog("Extraindo JRE...");
+                try {
+                    jreDir.mkdirs();
+                    InputStream assetIn = ctx.getAssets().open("jre.tar.gz");
+                    extractTarGz(assetIn, ctx.getFilesDir());
+                    log.onLog("JRE extraído.");
+                } catch (Exception e) {
+                    log.onLog("[ERRO] Falha ao extrair JRE: " + e.getMessage());
+                    return;
+                }
+            }
+
             File javaExec = new File(ctx.getFilesDir(), "jre/bin/java");
             if (!javaExec.exists()) {
-                log.onLog("[ERRO] JRE não encontrado. Coloque o JRE ARM64 em files/jre/");
+                log.onLog("[ERRO] JRE não encontrado após extração.");
                 return;
             }
             javaExec.setExecutable(true);
@@ -81,5 +101,29 @@ public class GameLauncher {
                 log.onLog("[ERRO] " + e.getMessage());
             }
         }).start();
+    }
+
+    private void extractTarGz(InputStream in, File destDir) throws Exception {
+        TarArchiveInputStream tar = new TarArchiveInputStream(new GZIPInputStream(in));
+        TarArchiveEntry entry;
+        while ((entry = tar.getNextTarEntry()) != null) {
+            File out = new File(destDir, entry.getName());
+            if (entry.isDirectory()) {
+                out.mkdirs();
+                continue;
+            }
+            out.getParentFile().mkdirs();
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                byte[] buf = new byte[8192];
+                int r;
+                while ((r = tar.read(buf)) != -1) {
+                    fos.write(buf, 0, r);
+                }
+            }
+            if (entry.getName().contains("/bin/")) {
+                out.setExecutable(true);
+            }
+        }
+        tar.close();
     }
 }
