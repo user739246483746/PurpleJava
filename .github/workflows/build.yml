@@ -45,6 +45,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Inspecionar JRE
+        run: |
+          tar -tzf app/src/main/assets/jre.tar.gz | grep "bin/java" | head -5
+
       - name: Download Gradle Wrapper JAR
         run: |
           mkdir -p gradle/wrapper
