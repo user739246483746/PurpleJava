@@ -2,34 +2,48 @@ package com.purplejava;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import com.purplejava.databinding.ActivityMainBinding;
+import android.widget.EditText;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    private ActivityMainBinding binding;
+    private TextView tvUsername;
+    private TextView tvStatus;
+    private Spinner spinnerVersions;
+    private Button btnPlay;
     private ProfileManager profileManager;
     private VersionFetcher versionFetcher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        binding = ActivityMainBinding.inflate(getLayoutInflater());
-        setContentView(binding.getRoot());
+        setContentView(R.layout.activity_main);
+
+        tvUsername     = findViewById(R.id.tv_username);
+        tvStatus       = findViewById(R.id.tv_status);
+        spinnerVersions = findViewById(R.id.spinner_versions);
+        btnPlay        = findViewById(R.id.btn_play);
+        Button btnEditProfile = findViewById(R.id.btn_edit_profile);
 
         profileManager = new ProfileManager(this);
         versionFetcher = new VersionFetcher(this);
 
         String username = profileManager.getUsername();
-        binding.tvUsername.setText(username.isEmpty() ? "Sem conta" : username);
+        tvUsername.setText(username.isEmpty() ? "Sem conta" : username);
 
-        binding.btnEditProfile.setOnClickListener(v -> showProfileDialog());
+        btnEditProfile.setOnClickListener(v -> showProfileDialog());
 
         loadVersionList();
 
-        binding.btnPlay.setOnClickListener(v -> {
-            String selected = (String) binding.spinnerVersions.getSelectedItem();
+        btnPlay.setOnClickListener(v -> {
+            String selected = (String) spinnerVersions.getSelectedItem();
             if (selected == null || selected.isEmpty()) {
                 Toast.makeText(this, "Selecione uma versão", Toast.LENGTH_SHORT).show();
                 return;
@@ -39,36 +53,39 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Configure uma conta local primeiro", Toast.LENGTH_SHORT).show();
                 return;
             }
-            startGame(selected, currentUser);
+            Intent intent = new Intent(this, LauncherActivity.class);
+            intent.putExtra("version", selected);
+            intent.putExtra("username", currentUser);
+            startActivity(intent);
         });
     }
 
     private void loadVersionList() {
-        binding.btnPlay.setEnabled(false);
-        binding.tvStatus.setText("Buscando versões...");
+        btnPlay.setEnabled(false);
+        tvStatus.setText("Buscando versões...");
 
         versionFetcher.fetchVersionList(versions -> runOnUiThread(() -> {
             if (versions == null || versions.isEmpty()) {
-                binding.tvStatus.setText("Falha ao buscar versões");
+                tvStatus.setText("Falha ao buscar versões");
                 return;
             }
-            android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(
                     this,
                     android.R.layout.simple_spinner_item,
                     versions
             );
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-            binding.spinnerVersions.setAdapter(adapter);
-            binding.tvStatus.setText("Pronto");
-            binding.btnPlay.setEnabled(true);
+            spinnerVersions.setAdapter(adapter);
+            tvStatus.setText("Pronto");
+            btnPlay.setEnabled(true);
         }));
     }
 
     private void showProfileDialog() {
-        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Conta Local");
 
-        final android.widget.EditText input = new android.widget.EditText(this);
+        final EditText input = new EditText(this);
         input.setHint("Nome de usuário");
         input.setText(profileManager.getUsername());
         builder.setView(input);
@@ -80,16 +97,9 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             profileManager.setUsername(name);
-            binding.tvUsername.setText(name);
+            tvUsername.setText(name);
         });
         builder.setNegativeButton("Cancelar", null);
         builder.show();
-    }
-
-    private void startGame(String version, String username) {
-        Intent intent = new Intent(this, LauncherActivity.class);
-        intent.putExtra("version", version);
-        intent.putExtra("username", username);
-        startActivity(intent);
     }
 }
