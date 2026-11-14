@@ -15,7 +15,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 public class GameLauncher {
 
     private static final String TAG = "GameLauncher";
-
     private final Context ctx;
 
     public interface LogCallback {
@@ -28,23 +27,23 @@ public class GameLauncher {
 
     public void launch(String versionId, String username, LogCallback log) {
         new Thread(() -> {
-            File jarFile    = new File(ctx.getFilesDir(), "versions/" + versionId + "/client.jar");
             File gameDir    = new File(ctx.getExternalFilesDir(null), "minecraft");
             File assetsDir  = new File(gameDir, "assets");
             File nativesDir = new File(ctx.getFilesDir(), "natives/" + versionId);
+            File jarFile    = new File(ctx.getFilesDir(), "versions/" + versionId + "/client.jar");
 
             gameDir.mkdirs();
             assetsDir.mkdirs();
             nativesDir.mkdirs();
 
-            // Extrai JRE do assets se ainda não extraído
+            // Extrai JRE — strip do prefixo raiz do tar do Adoptium
             File jreDir = new File(ctx.getFilesDir(), "jre");
             if (!jreDir.exists()) {
                 log.onLog("Extraindo JRE...");
                 try {
                     jreDir.mkdirs();
                     InputStream assetIn = ctx.getAssets().open("jre.tar.gz");
-                    extractTarGz(assetIn, ctx.getFilesDir());
+                    extractTarGz(assetIn, jreDir);
                     log.onLog("JRE extraído.");
                 } catch (Exception e) {
                     log.onLog("[ERRO] Falha ao extrair JRE: " + e.getMessage());
@@ -52,9 +51,10 @@ public class GameLauncher {
                 }
             }
 
-            File javaExec = new File(ctx.getFilesDir(), "jre/bin/java");
-            if (!javaExec.exists()) {
-                log.onLog("[ERRO] JRE não encontrado após extração.");
+            // Adoptium extrai como jdk-17.x.x+x-jre/bin/java — acha dinamicamente
+            File javaExec = findJava(jreDir);
+            if (javaExec == null) {
+                log.onLog("[ERRO] java não encontrado em: " + jreDir.getAbsolutePath());
                 return;
             }
             javaExec.setExecutable(true);
@@ -79,7 +79,7 @@ public class GameLauncher {
             cmd.add("--assetsDir");   cmd.add(assetsDir.getAbsolutePath());
             cmd.add("--version");     cmd.add(versionId);
 
-            log.onLog("Executando: " + String.join(" ", cmd));
+            log.onLog("java: " + javaExec.getAbsolutePath());
 
             try {
                 ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -94,20 +94,42 @@ public class GameLauncher {
                 }
 
                 int exit = proc.waitFor();
-                log.onLog("Processo encerrado com código: " + exit);
+                log.onLog("Processo encerrado: " + exit);
 
             } catch (IOException | InterruptedException e) {
-                Log.e(TAG, "Erro ao iniciar processo", e);
+                Log.e(TAG, "Erro ao iniciar", e);
                 log.onLog("[ERRO] " + e.getMessage());
             }
         }).start();
+    }
+
+    /** Procura bin/java recursivamente dentro do diretório do JRE */
+    private File findJava(File dir) {
+        File bin = new File(dir, "bin/java");
+        if (bin.exists()) return bin;
+        File[] children = dir.listFiles();
+        if (children == null) return null;
+        for (File child : children) {
+            if (child.isDirectory()) {
+                File found = findJava(child);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void extractTarGz(InputStream in, File destDir) throws Exception {
         TarArchiveInputStream tar = new TarArchiveInputStream(new GZIPInputStream(in));
         TarArchiveEntry entry;
         while ((entry = tar.getNextTarEntry()) != null) {
-            File out = new File(destDir, entry.getName());
+            // Strip do primeiro componente do path (pasta raiz do Adoptium)
+            String name = entry.getName();
+            int slash = name.indexOf('/');
+            if (slash < 0) continue;
+            name = name.substring(slash + 1);
+            if (name.isEmpty()) continue;
+
+            File out = new File(destDir, name);
             if (entry.isDirectory()) {
                 out.mkdirs();
                 continue;
@@ -116,13 +138,9 @@ public class GameLauncher {
             try (FileOutputStream fos = new FileOutputStream(out)) {
                 byte[] buf = new byte[8192];
                 int r;
-                while ((r = tar.read(buf)) != -1) {
-                    fos.write(buf, 0, r);
-                }
+                while ((r = tar.read(buf)) != -1) fos.write(buf, 0, r);
             }
-            if (entry.getName().contains("/bin/")) {
-                out.setExecutable(true);
-            }
+            if (name.startsWith("bin/")) out.setExecutable(true);
         }
         tar.close();
     }
