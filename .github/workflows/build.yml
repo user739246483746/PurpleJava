@@ -38,16 +38,9 @@ jobs:
       - name: Download JRE ARM64
         run: |
           mkdir -p app/src/main/assets
-          gh release download --repo adoptium/temurin17-binaries \
-            --pattern "OpenJDK17U-jre_aarch64_linux_hotspot_*.tar.gz" \
-            --output app/src/main/assets/jre.tar.gz \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Inspecionar JRE
-        run: |
-          tar -tzf app/src/main/assets/jre.tar.gz | grep "bin/java" | head -5
+          curl -L -o app/src/main/assets/jre.tar.gz \
+            "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.9%2B9/OpenJDK17U-jre_aarch64_linux_hotspot_17.0.9_9.tar.gz"
+          ls -lh app/src/main/assets/
 
       - name: Download Gradle Wrapper JAR
         run: |
