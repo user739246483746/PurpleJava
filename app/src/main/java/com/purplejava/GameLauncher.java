@@ -2,6 +2,7 @@ package com.purplejava;
 
 import android.content.Context;
 import android.util.Log;
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.CompressorStreamFactory;
 
 public class GameLauncher {
 
@@ -36,14 +38,13 @@ public class GameLauncher {
             assetsDir.mkdirs();
             nativesDir.mkdirs();
 
-            // Extrai JRE — strip do prefixo raiz do tar do Adoptium
             File jreDir = new File(ctx.getFilesDir(), "jre");
-            if (!jreDir.exists()) {
+            if (!jreDir.exists() || jreDir.list() == null || jreDir.list().length == 0) {
                 log.onLog("Extraindo JRE...");
                 try {
                     jreDir.mkdirs();
                     InputStream assetIn = ctx.getAssets().open("jre.tar.gz");
-                    extractTarGz(assetIn, jreDir);
+                    extractTar(assetIn, jreDir);
                     log.onLog("JRE extraído.");
                 } catch (Exception e) {
                     log.onLog("[ERRO] Falha ao extrair JRE: " + e.getMessage());
@@ -51,7 +52,6 @@ public class GameLauncher {
                 }
             }
 
-            // Adoptium extrai como jdk-17.x.x+x-jre/bin/java — acha dinamicamente
             File javaExec = findJava(jreDir);
             if (javaExec == null) {
                 log.onLog("[ERRO] java não encontrado em: " + jreDir.getAbsolutePath());
@@ -103,7 +103,6 @@ public class GameLauncher {
         }).start();
     }
 
-    /** Procura bin/java recursivamente dentro do diretório do JRE */
     private File findJava(File dir) {
         File bin = new File(dir, "bin/java");
         if (bin.exists()) return bin;
@@ -118,15 +117,26 @@ public class GameLauncher {
         return null;
     }
 
-    private void extractTarGz(InputStream in, File destDir) throws Exception {
-        TarArchiveInputStream tar = new TarArchiveInputStream(new GZIPInputStream(in));
+    private void extractTar(InputStream in, File destDir) throws Exception {
+        BufferedInputStream buffered = new BufferedInputStream(in, 8192);
+        buffered.mark(8192);
+
+        InputStream decompressed;
+        try {
+            decompressed = new CompressorStreamFactory()
+                    .createCompressorInputStream(buffered);
+        } catch (Exception e) {
+            buffered.reset();
+            decompressed = new GZIPInputStream(buffered);
+        }
+
+        TarArchiveInputStream tar = new TarArchiveInputStream(decompressed);
         TarArchiveEntry entry;
         while ((entry = tar.getNextTarEntry()) != null) {
-            // Strip do primeiro componente do path (pasta raiz do Adoptium)
             String name = entry.getName();
+            // strip pasta raiz (ex: jdk-17.0.x+x-jre/)
             int slash = name.indexOf('/');
-            if (slash < 0) continue;
-            name = name.substring(slash + 1);
+            if (slash >= 0) name = name.substring(slash + 1);
             if (name.isEmpty()) continue;
 
             File out = new File(destDir, name);
