@@ -4,12 +4,12 @@ import android.content.Context;
 import android.util.Log;
 import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
@@ -43,11 +43,29 @@ public class GameLauncher {
                 log.onLog("Extraindo JRE...");
                 try {
                     jreDir.mkdirs();
-                    InputStream assetIn = ctx.getAssets().open("jre.tar.gz");
-                    extractTar(assetIn, jreDir);
+
+                    // Copia asset para arquivo temporário antes de extrair
+                    File tmpTar = new File(ctx.getCacheDir(), "jre_tmp.tar.gz");
+                    try (InputStream assetIn = ctx.getAssets().open("jre.tar.gz");
+                         FileOutputStream tmpOut = new FileOutputStream(tmpTar)) {
+                        byte[] buf = new byte[8192];
+                        int r;
+                        while ((r = assetIn.read(buf)) != -1) tmpOut.write(buf, 0, r);
+                    }
+
+                    // Extrai do arquivo temporário
+                    try (FileInputStream fis = new FileInputStream(tmpTar);
+                         BufferedInputStream bis = new BufferedInputStream(fis)) {
+                        InputStream decompressed = new CompressorStreamFactory()
+                                .createCompressorInputStream(bis);
+                        extractTar(decompressed, jreDir);
+                    }
+
+                    tmpTar.delete();
                     log.onLog("JRE extraído.");
+
                 } catch (Exception e) {
-                    log.onLog("[ERRO] Falha ao extrair JRE: " + e.getMessage());
+                    log.onLog("[ERRO] Falha ao extrair JRE: " + e.getClass().getName() + " — " + e.getMessage());
                     return;
                 }
             }
@@ -117,24 +135,11 @@ public class GameLauncher {
         return null;
     }
 
-    private void extractTar(InputStream in, File destDir) throws Exception {
-        BufferedInputStream buffered = new BufferedInputStream(in, 8192);
-        buffered.mark(8192);
-
-        InputStream decompressed;
-        try {
-            decompressed = new CompressorStreamFactory()
-                    .createCompressorInputStream(buffered);
-        } catch (Exception e) {
-            buffered.reset();
-            decompressed = new GZIPInputStream(buffered);
-        }
-
+    private void extractTar(InputStream decompressed, File destDir) throws Exception {
         TarArchiveInputStream tar = new TarArchiveInputStream(decompressed);
         TarArchiveEntry entry;
         while ((entry = tar.getNextTarEntry()) != null) {
             String name = entry.getName();
-            // strip pasta raiz (ex: jdk-17.0.x+x-jre/)
             int slash = name.indexOf('/');
             if (slash >= 0) name = name.substring(slash + 1);
             if (name.isEmpty()) continue;
